@@ -81,7 +81,12 @@ get_arguments.pythonjs_function = True
 
 ### bootstrap object object
 
-__pythonjs_object = JSObject()
+FunctionType = JSObject()
+FunctionType["__name__"] = "function type"
+
+# this is a base object also because functions are a special type
+__pythonjs_function = JSObject()
+__pythonjs_function["__name__"] = "object"
 
 ## define the only method of object which is __getattribute__
 
@@ -143,14 +148,14 @@ def get_attribute(object, attribute):
 
     # we need the same algorithm as __getattribute__ except we look for the right __getattribute__
     # so call the __getattribute__...
-    inherited_getattribute = __getattribute__([object, "__getattribute__"], JSObject())
+    inherited_getattribute = _object__getattribute__.call(_object__getattribute__, [object, "__getattribute__"], JSObject())
     
     # now that we have the right __getattribute__ call it with the __attribute__ we actually look for
-    return inherited_getattribute([object, attribute])
+    return inherited_getattribute.call(inherited_getattribute, [object, attribute], JSObject())
     
 
-def __getattribute__(args, kwargs):
-    parameters = get_arguments(this.signature, args, kwargs)
+def _object__getattribute__(args, kwargs):
+    parameters = get_arguments(this["signature"], args, kwargs)
     object = parameters["self"]
     attribute = parameters["attribute"]
 
@@ -263,10 +268,10 @@ def __getattribute__(args, kwargs):
             if f:
                 return f([object, attribute])
     
-__getattribute__.signature = JSObject()
-__getattribute__.signature["args"] = ['self,', 'attribute']
+__getattribute__["signature"] = JSObject()
+__getattribute__["signature"]["args"] = ['self,', 'attribute']
 
-object.__getattribute__ = __getattribute__
+object.__getattribute__ = __object_getattribute__
 
 
 def _get_upstream_attribute(base, attr):
@@ -285,11 +290,72 @@ def _get_upstream_property(base, attr):
 ### bootstrap type object
 
 type = JSObject()
-type.bases = [object]
-type.__name__ = class_name
-type.__dict__ = attrs   # maybe not needed depends on __getattribute__
-type.__properties__ = JSObject()
+type["bases"] = [__pythonjs_object]
+type["__name__"] = "type"
 
+def _type__call__(args, kwargs):
+    parameters = get_arguments(this["signature"], args, kwargs)
+    self = parameters["self"]
+    object_or_name = parameters["object_or_name"]
+    bases = parameters["bases"]
+    attrs = parameters["attrs"]
+    
+    if isinstance.call(isinstance, type_or_name, str):
+        name = object_or_name
+        __new__ = getattribute(self, "__new__")
+        klass = __new__.call(__new__, [name, bases, attrs])
+        if klass:
+            __init__ = getattribute(self, "__init__")
+            __init__.call(__init__, [klass, name, bases, attrs])
+            return klass
+        else:
+            return None
+    else:
+        object = object_or_name
+        # we want the type of the object
+        if object == __pythonjs_object:
+            return type
+        elif object["__class__"]:
+            return object["__class__"]
+        else:
+            try:
+                # it's class
+                return get_attribute(object, "__metaclass__")
+            except:  # XXX: this must be named
+                # it's a pythonjs function
+                if object.pythonjs_function:
+                    return __pythonjs_function
+                # or not a pythonjs object
+                return None
+_type__call__["signature"] = JSObject()
+_type__call__["signature"]["args"] = ["self", "object_or_name", "bases", "attrs"]
+_type__call__["signature"]["kwargs"] = {"bases": None, "attrs": None}
+type["__call__"] = _type__call__
+
+def _type__new__(args, kwargs):
+    parameters = get_arguments(this["signature"], args, kwargs)
+    cls = parameters["cls"]  # metaclass
+    name = parameters["name"]
+    bases = parameters["bases"]
+    attrs = parameters["attrs"]
+    object = JSObject()
+    object.__metaclass__ = cls
+    object.__bases__ = [__pythonjs_object]
+    object.__name__ = name
+    object.__dict__ = attrs
+    return object
+_type__new__["signature"] = JSObject()
+_type__new__["signature"]["args"] = ["cls", "name", "bases", "attrs"]
+type["__new__"] = _type__new__
+
+
+
+def _type__init__(args, kwargs):
+    pass  # default init does nothing
+type["__init__"] = _type__init__
+
+
+# other internal functions
 
 def set_attribute(object, attribute, value):
     """Set an attribute on an object by updating its __dict__ property"""
