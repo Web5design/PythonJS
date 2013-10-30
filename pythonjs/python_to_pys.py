@@ -360,10 +360,6 @@ class PythonToPythonJS(NodeVisitor):
     def visit_In(self, node):
         return ' in '
 
-    def visit_NotIn(self, node):
-        #return ' not in '
-        raise RuntimeError('"not in" is only allowed in if-test: see method - visit_Compare')
-
     def visit_AugAssign(self, node):
         target = self.visit( node.target )
         op = '%s=' %self.visit( node.op )
@@ -523,7 +519,7 @@ class PythonToPythonJS(NodeVisitor):
             writer.write('return %s' % self.visit(node.value))
 
         else:
-            writer.write('return')  ## empty return
+            raise RuntimeError
 
     def visit_BinOp(self, node):
         left = self.visit(node.left)
@@ -600,29 +596,18 @@ class PythonToPythonJS(NodeVisitor):
         left = self.visit(node.left)
         comp = [ left ]
         for i in range( len(node.ops) ):
-            if isinstance(node.ops[i], ast.In) or isinstance(node.ops[i], ast.NotIn):
+            if isinstance(node.ops[i], ast.In):
                 if comp[-1] == left:
                     comp.pop()
                 else:
                     comp.append( ' and ' )
-
-                if isinstance(node.ops[i], ast.NotIn):
-                    comp.append( ' not (')
-
                 a = ( self.visit(node.comparators[i]), left )
-                if self._with_js:
-                    ## this makes "if 'x' in Array" work like Python: "if 'x' in list" - TODO fix this for js-objects
-                    ## note javascript rules are confusing: "1 in [1,2]" is true, this is because a "in test" in javascript tests for an index
-                    ## TODO double check this code
-                    comp.append( '%s in %s or' %(a[1], a[0]) )  ## this is ugly, will break with Arrays
-                    comp.append( 'Object.hasOwnProperty.call(%s, "__contains__") and' %a[0])
+                if self._with_js:  ## this makes "if 'x' in Array" work like Python: "if 'x' in list" - TODO fix this for js-objects
+                    comp.append( '%s in %s or' %(a[1], a[0]) )  ## this is ugly, but it works
+                    comp.append( 'Object.hasOwnProperty(%s, "__contains__") and' %a[0])
                     comp.append( "%s['__contains__'](%s)" %a )
                 else:
                     comp.append( "get_attribute(get_attribute(%s, '__contains__'), '__call__')([%s], JSObject())" %a )
-
-                if isinstance(node.ops[i], ast.NotIn):
-                    comp.append( ' )')  ## it is not required to enclose NotIn
-
             else:
                 comp.append( self.visit(node.ops[i]) )
                 comp.append( self.visit(node.comparators[i]) )
@@ -667,7 +652,7 @@ class PythonToPythonJS(NodeVisitor):
 
             elif '__getattr__' in typedef.methods:
                 func = typedef.get_pythonjs_function_name( '__getattr__' )
-                return '%s([%s, "%s"], JSObject())' %(func, node_value, node.attr)
+                return '%s([%s, "%s"])' %(func, node_value, node.attr)
 
             elif typedef.check_for_parent_with( property=node.attr ):
                 parent = typedef.check_for_parent_with( property=node.attr )
@@ -688,7 +673,7 @@ class PythonToPythonJS(NodeVisitor):
             elif typedef.check_for_parent_with( method='__getattr__' ):
                 parent = typedef.check_for_parent_with( method='__getattr__' )
                 func = parent.get_pythonjs_function_name( '__getattr__' )
-                return '%s([%s, "%s"], JSObject())' %(func, node_value, node.attr)
+                return '%s([%s, "%s"])' %(func, node_value, node.attr)
 
             else:
                 return 'get_attribute(%s, "%s")' % (node_value, node.attr)  ## TODO - double check this
@@ -889,7 +874,7 @@ class PythonToPythonJS(NodeVisitor):
                 a = ','.join(args)
                 return '%s( %s )' %( self.visit(node.func), a )
 
-        if isinstance(node.func, Name) and node.func.id in ('JS', 'toString', 'JSObject', 'JSArray', 'var', 'instanceof', 'typeof'):
+        if isinstance(node.func, Name) and node.func.id in ('JS', 'toString', 'JSObject', 'JSArray', 'var', 'instanceof'):
             args = list( map(self.visit, node.args) ) ## map in py3 returns an iterator not a list
             if node.func.id == 'var':
                 for k in node.keywords:
@@ -936,12 +921,12 @@ class PythonToPythonJS(NodeVisitor):
                     writer.append('%s = JSArray(%s)' % (args_name, args))
 
                 if node.starargs:
-                    writer.append('%s.push.apply(%s, %s.__dict__.js_object)' % (args_name, args_name, self.visit(node.starargs)))
+                    writer.append('%s.push.apply(%s, %s)' % (args_name, args_name, self.visit(node.starargs)))
                 writer.append('%s = JSObject(%s)' % (kwargs_name, kwargs))
 
                 if node.kwargs:
                     kwargs = self.visit(node.kwargs)
-                    code = "JS('for (var name in %s) { %s[name] = %s.__dict__.js_object[name]; }')" % (kwargs, kwargs_name, kwargs)
+                    code = "JS('for (var name in %s) { %s[name] = %s[name]; }')" % (kwargs, kwargs_name, kwargs)
                     writer.append(code)
 
             if call_has_args_only:
@@ -958,15 +943,7 @@ class PythonToPythonJS(NodeVisitor):
             elif name in self._classes or name in self._builtins:
                 return 'get_attribute(%s, "__call__")( JSArray(), JSObject() )' %name
 
-            else:
-                ## this a slightly dangerous optimization,
-                ## because if the user is trying to create an instance of some class
-                ## and that class is define in an external binding,
-                ## and they forgot to put "from mylibrary import *" in their script (an easy mistake to make)
-                ## then this fails to call __call__ to initalize the instance,
-                ## and throws a confusing error:
-                ## Uncaught TypeError: Property 'SomeClass' of object [object Object] is not a function 
-                ## TODO - remove this optimization, or provide the user with a better error message.
+            else:  ## this could be a dangerous optimization ##
                 return '%s( JSArray(), JSObject() )' %name
 
     def visit_Lambda(self, node):
@@ -1029,28 +1006,6 @@ class PythonToPythonJS(NodeVisitor):
         else:
             writer.write('def %s(args, kwargs):' % node.name)
         writer.push()
-
-        ## the user will almost always want to use Python-style variable scope,
-        ## this is kept here as an option to be sure we are compatible with the
-        ## old-style code in runtime/pythonpythonjs.py and runtime/builtins.py
-        if not GLOBAL_VARIABLE_SCOPE:
-            local_vars = set()
-            global_vars = set()
-            for n in node.body:
-                if isinstance(n, Assign) and isinstance(n.targets[0], Name):  ## assignment to local
-                    local_vars.add( n.targets[0].id )
-                elif isinstance(n, Global):
-                    global_vars.update( n.names )
-                elif isinstance(n, With) and isinstance( n.context_expr, Name ) and n.context_expr.id == 'javascript':
-                    for c in n.body:
-                        if isinstance(c, Assign) and isinstance(c.targets[0], Name):  ## assignment to local
-                            local_vars.add( c.targets[0].id )
-
-            if local_vars-global_vars:
-                a = ','.join( local_vars-global_vars )
-                writer.write('var(%s)' %a)
-
-
 
         if not self._with_js and (len(node.args.defaults) or len(node.args.args) or node.args.vararg or node.args.kwarg):
             # First check the arguments are well formed 
@@ -1148,13 +1103,9 @@ class PythonToPythonJS(NodeVisitor):
                 else:  ## TODO fix with-javascript decorators
                     writer.write( '%s = get_attribute(%s,"__call__")( [%s] )' %(node.name, dec, node.name))
 
-        ## Gotcha, this broke calling a "with javascript:" defined function from pythonjs, 
-        ## because get_attribute thought it was dealing with a pythonjs function and was
-        ## calling the function in the normal pythonjs way, ie. func( [args], {} )
-        #elif self._with_js:  ## this is just an optimization so we can avoid making wrappers at runtime
-        #    writer.write('%s.pythonscript_function=true'%node.name)
-
-        if not self._with_js:
+        elif self._with_js:  ## this is just an optimization so we can avoid making wrappers at runtime
+            writer.write('%s.pythonscript_function=true'%node.name)
+        else:
             writer.write('%s.pythonscript_function=True'%node.name)
 
         # apply decorators
@@ -1213,14 +1164,6 @@ class PythonToPythonJS(NodeVisitor):
             map(self.visit, node.body)
             writer.with_javascript = False
             self._with_js = False
-        elif isinstance( node.context_expr, Name ) and node.context_expr.id == 'python':
-            if not self._with_js:
-                raise SyntaxError('"with python:" is only used inside of a "with javascript:" block')
-            self._with_js = False
-            writer.with_javascript = False
-            map(self.visit, node.body)
-            writer.with_javascript = True
-            self._with_js = True
 
 
 def main(script):

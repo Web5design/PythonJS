@@ -1,20 +1,20 @@
-from setuptools import setup
+#!/usr/bin/env python3
+from distutils.core import setup
 
 
 setup(
     name='PythonJS',
-    version='0.8',
-    description='Python translator for the browser',
+    version='0.9',
+    description='Python to Javascript compiler for the browser',
     author='Amirouche Boubekki',
     author_email='amirouche.boubekki@gmail.com',
-    url='https://github.com/PythonJS/PythonJS.git',
+    url='http://www.pythonjs.net',
     zip_safe=False,
     packages=['pythonjs'],
     entry_points="""
     [console_scripts]
-    rpythonjs=pythonjs.pythonjs:main
-    pythonjs=pythonjs.pythonscript:command
-    python_to_rpythonjs=pythonjs.python_to_pythonjs:command
+    pys=pythonjs.pys:main
+    pythonjs=pythonjs.pythonjs:main
+    python_to_pys=pythonjs.python_to_pys:command
     """,
-    install_script='bin/pythonjs',
 )
