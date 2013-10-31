@@ -50,7 +50,7 @@ def get_arguments(signature, args, kwargs):
         if signature.vararg:
             pass
         else:
-            print 'ERROR args:', args, 'kwargs:', kwargs, 'sig:', signature
+            print('ERROR args:', args, 'kwargs:', kwargs, 'sig:', signature)
             raise TypeError("Supplemental positional arguments provided but signature doesn't accept them")
 
     j = 0
