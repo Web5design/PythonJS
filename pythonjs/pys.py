@@ -20,14 +20,14 @@ class JSGenerator(NodeVisitor):
 
     def visit_Module(self, node):
         return '\n'.join(map(self.visit, node.body))
-
+            
     def visit_Tuple(self, node):
         return '[{}]'.format(', '.join(map(self.visit, node.elts)))
 
     def visit_List(self, node):
         return '[{}]'.format(', '.join(map(self.visit, node.elts)))
 
-    def visit_TryExcept(self, node):
+    def visit_Try(self, node):
         out = 'try {\n'
         out += '\n'.join(map(self.visit, node.body))
         out += '\n}\n'
@@ -37,14 +37,14 @@ class JSGenerator(NodeVisitor):
         return out
 
     def visit_Raise(self, node):
-        print(node._fields)
         return 'throw {};'.format(self.visit(node.exc))
 
     def visit_Yield(self, node):
         return 'yield {};'.format(self.visit(node.value))
 
     def visit_ImportFrom(self, node):
-        pass  # ignore because we still need do write imports to avoid warnings from pep8
+        # ignore because we still need do write imports to avoid warnings from pep8
+        return ''
 
     def visit_ExceptHandler(self, node):
         out = ''
@@ -65,10 +65,9 @@ class JSGenerator(NodeVisitor):
         if not hasattr(self, '_function_stack'):  ## track nested functions ##
             self._function_stack = []
 
-        self._function_stack.append( node.name )
-        args = self.visit(node.args)
-        buffer = 'var {} = function({}) {{\n'.format(node.name, ', '.join(args))
-        body = list()
+        self._function_stack.append(node.name)
+        f = self.visit(node.args)
+        buffer = 'var {} = function({}) {{\n'.format(node.name, f)
 
         # check for variable creation use var if not global
         def retrieve_vars(body):
@@ -93,16 +92,8 @@ class JSGenerator(NodeVisitor):
             buffer += 'var {};\n'.format(a)
 
         # output function body
-        for child in node.body:
-            if isinstance(child, Str):
-                continue
-
-            if isinstance(child, GeneratorType):
-                for sub in child:
-                    body.append(self.visit(sub))
-            else:
-                body.append(self.visit(child))
-        buffer += '\n'.join(body)
+        body = '\n'.join(map(self.visit, node.body))
+        buffer += body
         buffer += '\n}\n'
 
         if node.name == self._function_stack[0]:  ## to be safe do not export nested functions
@@ -116,7 +107,7 @@ class JSGenerator(NodeVisitor):
 
     def visit_arguments(self, node):
         # no support for annotation
-        return map(lambda x: x.arg, node.args)
+        return ', '.join(map(lambda x: x.arg, node.args))
 
     def visit_Name(self, node):
         if node.id == 'None':
@@ -185,6 +176,10 @@ class JSGenerator(NodeVisitor):
     def visit_While(self, node):
         body = '\n'.join(map(self.visit, node.body))
         return 'while({}) {{\n{}\n}}'.format(self.visit(node.test), body)
+
+    def visit_AugAssign(self, node):
+        target = self.visit(node.target)
+        return '{} = {} {} {}'.format(target, target, self.visit(node.op), self.visit(node.value))
 
     def visit_Str(self, node):
         s = node.s.replace('\n', '\\n')
@@ -306,10 +301,11 @@ class JSGenerator(NodeVisitor):
     def visit_If(self, node):
         test = self.visit(node.test)
         body = '\n'.join(map(self.visit, node.body)) + '\n'
-        orelse = '\n'.join(map(self.visit, node.orelse)) + '\n'
-        if not orelse.isspace():
+        if node.orelse:
+            orelse = '\n'.join(map(self.visit, node.orelse)) + '\n'
             return 'if({}) {{\n{}}}\nelse {{\n{}}}\n'.format(test, body, orelse)
-        return 'if({}) {{\n{}}}\n'.format(test, body)
+        else:
+            return 'if({}) {{\n{}}}\n'.format(test, body)
 
     def visit_Dict(self, node):
         a = []

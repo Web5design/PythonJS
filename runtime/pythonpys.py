@@ -62,7 +62,7 @@ def get_arguments(signature, args, kwargs):
         elif j < args.length:
             # value is positional and within the signature length
             out[name] = args[j]
-        elif name in signature.kwargs:
+        elif signature.kwargs and name in signature.kwargs:
             # value is not found before and is in signature.length
             out[name] = signature.kwargs[name]
         j += 1
@@ -85,8 +85,8 @@ FunctionType = JSObject()
 FunctionType["__name__"] = "function type"
 
 # this is a base object also because functions are a special type
-__pythonjs_function = JSObject()
-__pythonjs_function["__name__"] = "object"
+__pythonjs_object = JSObject()
+__pythonjs_object["__name__"] = "object"
 
 ## define the only method of object which is __getattribute__
 
@@ -148,14 +148,16 @@ def get_attribute(object, attribute):
 
     # we need the same algorithm as __getattribute__ except we look for the right __getattribute__
     # so call the __getattribute__...
-    inherited_getattribute = _object__getattribute__.call(_object__getattribute__, [object, "__getattribute__"], JSObject())
+    inherited_getattribute = _object__getattribute__([object, "__getattribute__"], JSObject())
     
     # now that we have the right __getattribute__ call it with the __attribute__ we actually look for
-    return inherited_getattribute.call(inherited_getattribute, [object, attribute], JSObject())
+    return inherited_getattribute([object, attribute], JSObject())
     
+_object__getattribute__signature = JSObject()
+_object__getattribute__signature["args"] = ['self', 'attribute']
 
 def _object__getattribute__(args, kwargs):
-    parameters = get_arguments(this["signature"], args, kwargs)
+    parameters = get_arguments(_object__getattribute__signature, args, kwargs)
     object = parameters["self"]
     attribute = parameters["attribute"]
 
@@ -165,7 +167,7 @@ def _object__getattribute__(args, kwargs):
 
     if attr is not None:
         # if it's a function and it's not wrapped wrap it
-        if typeof(attr) == 'function' && attr.pythonjs_function is None and attr.is_wrapper is None:
+        if typeof(attr) == 'function' and attr.pythonjs_function is None and attr.is_wrapper is None:
             # XXX: this happens only when there is a function that is added by javascript to a PythonJS
             # object ?
             def wrapper(args,kwargs): return attr.apply(object, args)
@@ -192,25 +194,27 @@ def _object__getattribute__(args, kwargs):
                     return __get__([object, __class__])
     # Check object.__dict__ for attr and its bases if it a class
     # in the case if the descriptor is found return it
-    __dict__ = object.__dict__
-    bases = object.__bases__
+    __dict__ = object["__dict__"]
+    bases = object["__bases__"]
     if __dict__:
         attr = __dict__[attribute]
-        if attr != None:
+        if attr:
             if bases:
                 __get__ = get_attribute(attr, '__get__')
                 if __get__:
                     return __get__([None, __class__])
-            return attr
-
+                else:
+                    return attr
     if bases:
         for base in bases:
             attr = get_attribute(base, attribute)
             if attr:
+                print("qsmdlkqsmdlkqsmldk")
                 __get__ = get_attribute(attr, '__get__')
                 if __get__:
                     return __get__([object, __class__])
-
+                else:
+                    return attr
     # if it's class, look in the class attributes
     if __class__:
         __dict__ = __class__.__dict__
@@ -267,11 +271,9 @@ def _object__getattribute__(args, kwargs):
             f = _get_upstream_attribute(base, '__getattr__')
             if f:
                 return f([object, attribute])
-    
-__getattribute__["signature"] = JSObject()
-__getattribute__["signature"]["args"] = ['self,', 'attribute']
-
-object.__getattribute__ = __object_getattribute__
+    raise AttributeError
+_object__getattribute__.pythonjs_function = True
+__pythonjs_object.__getattribute__ = _object__getattribute__
 
 
 def _get_upstream_attribute(base, attr):
@@ -293,14 +295,18 @@ type = JSObject()
 type["bases"] = [__pythonjs_object]
 type["__name__"] = "type"
 
+_type__call__signature = JSObject()
+_type__call__signature["args"] = ["self", "object_or_name", "bases", "attrs"]
+_type__call__signature["kwargs"] = {"bases": None, "attrs": None}
+
 def _type__call__(args, kwargs):
-    parameters = get_arguments(this["signature"], args, kwargs)
+    parameters = get_arguments(_type__call__signature, args, kwargs)
     self = parameters["self"]
     object_or_name = parameters["object_or_name"]
     bases = parameters["bases"]
     attrs = parameters["attrs"]
     
-    if isinstance.call(isinstance, type_or_name, str):
+    if isinstance([object_or_name, str]):
         name = object_or_name
         __new__ = getattribute(self, "__new__")
         klass = __new__.call(__new__, [name, bases, attrs])
@@ -327,10 +333,9 @@ def _type__call__(args, kwargs):
                     return __pythonjs_function
                 # or not a pythonjs object
                 return None
-_type__call__["signature"] = JSObject()
-_type__call__["signature"]["args"] = ["self", "object_or_name", "bases", "attrs"]
-_type__call__["signature"]["kwargs"] = {"bases": None, "attrs": None}
 type["__call__"] = _type__call__
+
+type["__metaclass__"] == type
 
 def _type__new__(args, kwargs):
     parameters = get_arguments(this["signature"], args, kwargs)
@@ -353,6 +358,7 @@ type["__new__"] = _type__new__
 def _type__init__(args, kwargs):
     pass  # default init does nothing
 type["__init__"] = _type__init__
+
 
 
 # other internal functions
@@ -384,14 +390,6 @@ def set_attribute(object, attribute, value):
         object[attribute] = value
 set_attribute.pythonjs_function = True
 
-def type(args, kwargs):
-    var(class_name, parents, attrs)
-    class_name = args[0]
-    parents = args[1]
-    attrs = args[2]
-    return create_class(class_name, parents, attrs)
-type.pythonjs_function = True
-
 def getattr(args, kwargs):
     var(object, attribute)
     object = args[0]
@@ -400,7 +398,7 @@ def getattr(args, kwargs):
 getattr.pythonjs_function = True
 
 def setattr(args, kwargs):
-    var(object, attribute, value)
+    # XXX: use get_arguments
     object = args[0]
     attribute = args[1]
     value = args[2]
@@ -408,7 +406,7 @@ def setattr(args, kwargs):
 setattr.pythonjs_function = True
 
 def issubclass(args, kwargs):
-    var(C, B, base)
+    # XXX: use get_arguments
     C = args[0]
     B = args[1]
     if C is B:
@@ -421,11 +419,11 @@ def issubclass(args, kwargs):
 issubclass.pythonjs_function = True
 
 def isinstance(args, kwargs):
-    var(object_class, object, klass)
+    # XXX: use get_arguments
     object = args[0]
     klass = args[1]
     object_class = object.__class__
     if object_class is None:
         return False
-    return issubclass(create_array(object_class, klass))
+    return issubclass([object_class, klass])
 isinstance.pythonjs_function = True
