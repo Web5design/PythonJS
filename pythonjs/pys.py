@@ -37,13 +37,14 @@ class JSGenerator(NodeVisitor):
         return out
 
     def visit_Raise(self, node):
-        return 'throw {};'.format(self.visit(node.type))
+        print(node._fields)
+        return 'throw {};'.format(self.visit(node.exc))
 
     def visit_Yield(self, node):
         return 'yield {};'.format(self.visit(node.value))
 
     def visit_ImportFrom(self, node):
-        raise NotImplementedError
+        pass  # ignore because we still need do write imports to avoid warnings from pep8
 
     def visit_ExceptHandler(self, node):
         out = ''
