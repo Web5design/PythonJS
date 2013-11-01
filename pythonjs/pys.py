@@ -83,11 +83,12 @@ class JSGenerator(NodeVisitor):
                     l, g = retrieve_vars(n.body)
                     local_vars.update(l)
                     global_vars.update(g)
-                elif hasattr(n, 'orelse') and not isinstance(n, FunctionDef):
-                    # do a recursive search inside new block except function def
-                    l, g = retrieve_vars(n.orelse)
-                    local_vars.update(l)
-                    global_vars.update(g)
+                    if hasattr(n, 'orelse'):
+                        l, g = retrieve_vars(n.orelse)
+                        local_vars.update(l)
+                        global_vars.update(g)                        
+                else:
+                    print('fuuu', n)
             return local_vars, global_vars
 
         local_vars, global_vars = retrieve_vars(node.body)
