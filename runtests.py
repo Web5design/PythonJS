@@ -24,7 +24,8 @@ HTMLDocument = HTMLElement = function() {};
 RUNTIME_MOCK = """
 // RUNTIME MOCK START
 str = {__doc__: "str type"};
-AttributeError = {__doc__: "AttributeError Exception"};
+AttributeError = function() {};
+AttributeError.__doc__ = "AttributeError Exception";
 // RUNTIME MOCK END
 """
 
