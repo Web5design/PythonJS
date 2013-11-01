@@ -87,8 +87,6 @@ class JSGenerator(NodeVisitor):
                         l, g = retrieve_vars(n.orelse)
                         local_vars.update(l)
                         global_vars.update(g)                        
-                else:
-                    print('fuuu', n)
             return local_vars, global_vars
 
         local_vars, global_vars = retrieve_vars(node.body)
